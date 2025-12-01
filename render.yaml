@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: lost-items-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: MONGODB_URI_NOSRV
+        sync: false
+        optional: true
+      - key: DNS_SERVERS
+        sync: false
+        optional: true
+      - key: ALLOWED_ORIGINS
+        sync: false
+    healthCheckPath: /api/health
+

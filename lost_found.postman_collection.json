@@ -1,0 +1,304 @@
+{
+  "info": {
+    "name": "Lost & Found API",
+    "_postman_id": "12345678-abcd-efgh-ijkl-1234567890ab",
+    "description": "Collection for Lost & Found API with authentication",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api"
+    },
+    {
+      "key": "auth_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/auth/signup",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"user\",\n  \"studentId\": \"12345\",\n  \"phone\": \"1234567890\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Signin",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/auth/signin",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/admin/users"
+          }
+        },
+        {
+          "name": "Update User Role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/admin/users/:id/role",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"staff\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update User Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/admin/users/:id/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Claims",
+      "item": [
+        {
+          "name": "Get Claims",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/claims"
+          }
+        },
+        {
+          "name": "Create Claim",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/claims",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item\": \"ITEM_ID\",\n  \"ownershipProof\": \"Proof details\",\n  \"verificationAnswers\": {}\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Claim Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/claims/:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"approved\",\n  \"reviewNotes\": \"Notes here\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Found Items",
+      "item": [
+        {
+          "name": "Get Found Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/found-items"
+          }
+        },
+        {
+          "name": "Create Found Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/found-items",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "title", "value": "Wallet", "type": "text" },
+                { "key": "description", "value": "Black leather wallet", "type": "text" },
+                { "key": "category", "value": "accessory", "type": "text" },
+                { "key": "location", "value": "Library", "type": "text" },
+                { "key": "dateFound", "value": "2025-09-01", "type": "text" },
+                { "key": "images", "type": "file" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Single Found Item",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/found-items/:id"
+          }
+        },
+        {
+          "name": "Update Found Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/found-items/:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"claimed\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Lost Items",
+      "item": [
+        {
+          "name": "Get Lost Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/lost-items"
+          }
+        },
+        {
+          "name": "Create Lost Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/lost-items",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Phone\",\n  \"description\": \"Lost iPhone\",\n  \"category\": \"electronics\",\n  \"location\": \"Cafeteria\",\n  \"dateLost\": \"2025-09-01\",\n  \"contactEmail\": \"john@example.com\",\n  \"contactPhone\": \"1234567890\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get My Lost Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/lost-items/my-items"
+          }
+        },
+        {
+          "name": "Get Single Lost Item",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/lost-items/:id"
+          }
+        },
+        {
+          "name": "Update Lost Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/lost-items/:id",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"found\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search Items",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/search"
+          }
+        },
+        {
+          "name": "Search Suggestions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/search/suggestions"
+          }
+        },
+        {
+          "name": "Find Matches",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+            ],
+            "url": "{{base_url}}/search/matches"
+          }
+        }
+      ]
+    }
+  ]
+}
