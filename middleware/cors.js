@@ -7,11 +7,12 @@ const allowedOrigins = [
   "http://127.0.0.1:3001",
   "http://localhost:5000", // Backend self-requests
   "http://127.0.0.1:5000",
+ "http:// front2-git-main-ygdg12s-projects.vercel.app"
 ];
 
 // Add production frontend domain if set
 if (process.env.NODE_ENV === "production") {
-  const productionOrigin = process.env.FRONTEND_URL || "https://yourdomain.com";
+  const productionOrigin = process.env.FRONTEND_URL || "https://front2-git-main-ygdg12s-projects.vercel.app";
   if (productionOrigin) {
     allowedOrigins.push(productionOrigin);
   }
