@@ -93,6 +93,9 @@ router.get("/", async (req, res) => {
     const normalized = items.map((item) => {
       const obj = item.toObject({ virtuals: true })
       obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p))
+      // Compatibility fields for frontends that expect a single image
+      obj.imageUrl = obj.images?.[0] || null
+      obj.image = obj.images?.[0] || null
       return obj
     })
     res.status(200).json({ items: normalized })
@@ -111,6 +114,8 @@ router.get("/my-items", protect, async (req, res) => {
     const normalized = items.map((item) => {
       const obj = item.toObject({ virtuals: true })
       obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p))
+      obj.imageUrl = obj.images?.[0] || null
+      obj.image = obj.images?.[0] || null
       return obj
     })
     res.status(200).json({ items: normalized })

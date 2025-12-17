@@ -74,10 +74,7 @@ app.use(
   "/uploads",
   express.static(path.resolve("./uploads"), {
     maxAge: "1d",
-    setHeaders: (res, filePath) => {
-      if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        res.setHeader("Content-Type", "image/*");
-      }
+    setHeaders: (res) => {
       res.setHeader("X-Content-Type-Options", "nosniff");
     },
   })
@@ -89,7 +86,6 @@ app.use(
   express.static(path.resolve("./routes/routes/uploads/found-items"), {
     maxAge: "1d",
     setHeaders: (res) => {
-      res.setHeader("Content-Type", "image/*");
       res.setHeader("X-Content-Type-Options", "nosniff");
     },
   })
