@@ -7,6 +7,13 @@ import User from "../../routes/models/User.js"
 
 const router = express.Router()
 
+const toAbsoluteImageUrl = (req, imagePath) => {
+  if (!imagePath) return imagePath
+  if (/^https?:\/\//i.test(imagePath)) return imagePath
+  if (!imagePath.startsWith("/")) return imagePath
+  return `${req.protocol}://${req.get("host")}${imagePath}`
+}
+
 // Helper function to get user from token (optional auth)
 const getOptionalUser = async (req) => {
   const authHeader = req.headers.authorization
@@ -83,7 +90,12 @@ router.get("/", async (req, res) => {
     const items = await FoundItem.find()
       .populate("foundBy", "_id name email studentId phone")
       .sort({ createdAt: -1 })
-    res.status(200).json({ items })
+    const normalized = items.map((item) => {
+      const obj = item.toObject({ virtuals: true })
+      obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p))
+      return obj
+    })
+    res.status(200).json({ items: normalized })
   } catch (error) {
     console.error("Error fetching found items:", error)
     res.status(500).json({ message: "Failed to load items", error: error.message })
@@ -96,7 +108,12 @@ router.get("/my-items", protect, async (req, res) => {
     const items = await FoundItem.find({ foundBy: req.user._id })
       .populate("foundBy", "_id name email studentId phone")
       .sort({ createdAt: -1 })
-    res.status(200).json({ items })
+    const normalized = items.map((item) => {
+      const obj = item.toObject({ virtuals: true })
+      obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p))
+      return obj
+    })
+    res.status(200).json({ items: normalized })
   } catch (error) {
     console.error("Error fetching user's found items:", error)
     res.status(500).json({ message: "Failed to load items", error: error.message })

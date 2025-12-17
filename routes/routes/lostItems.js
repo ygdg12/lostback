@@ -2,10 +2,18 @@
 import express from "express";
 import LostItem from "../models/LostItem.js";
 import { protect, requireRole } from "../middleware/auth.js";
+import { uploadLost } from "../middleware/upload.js";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 const router = express.Router();
+
+const toAbsoluteImageUrl = (req, imagePath) => {
+  if (!imagePath) return imagePath;
+  if (/^https?:\/\//i.test(imagePath)) return imagePath;
+  if (!imagePath.startsWith("/")) return imagePath;
+  return `${req.protocol}://${req.get("host")}${imagePath}`;
+};
 
 // GET /api/lost-items - Fetch all lost items (public, optional filters)
 router.get("/", async (req, res) => {
@@ -27,7 +35,13 @@ router.get("/", async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(100);
 
-    res.json({ items });
+    const normalized = items.map((item) => {
+      const obj = item.toObject({ virtuals: true });
+      obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p));
+      return obj;
+    });
+
+    res.json({ items: normalized });
   } catch (error) {
     console.error("Error fetching lost items:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -35,8 +49,10 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/lost-items - Create new lost item (public, but attach user if authenticated)
-router.post("/", async (req, res) => {
+router.post("/", uploadLost.array("images", 5), async (req, res) => {
   try {
+    const imagePaths = (req.files || []).map((file) => `/uploads/lost-items/${file.filename}`);
+
     // Optional auth - try to get user from token
     let userId = null;
     let userEmail = null;
@@ -86,6 +102,7 @@ router.post("/", async (req, res) => {
         email: contactEmail || userEmail || undefined,
         phone: contactPhone || undefined,
       },
+      images: imagePaths,
       color,
       brand,
       size,
@@ -100,6 +117,12 @@ router.post("/", async (req, res) => {
     res.status(201).json({ message: "Lost item reported successfully", item: lostItem });
   } catch (error) {
     console.error("Error creating lost item:", error);
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ message: "File too large (max 5MB)" });
+    }
+    if (error.message === "Only image files are allowed") {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: "Internal server error" });
   }
 });
