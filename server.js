@@ -62,37 +62,7 @@ const limiter = rateLimit({
 app.use("/api", limiter);
 
 // -----------------------------
-// BODY PARSING
-// -----------------------------
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-// -----------------------------
-// FILE UPLOAD SERVING
-// -----------------------------
-app.use(
-  "/uploads",
-  express.static(path.resolve("./uploads"), {
-    maxAge: "1d",
-    setHeaders: (res) => {
-      res.setHeader("X-Content-Type-Options", "nosniff");
-    },
-  })
-);
-
-// Legacy uploads path (optional)
-app.use(
-  "/uploads/found-items",
-  express.static(path.resolve("./routes/routes/uploads/found-items"), {
-    maxAge: "1d",
-    setHeaders: (res) => {
-      res.setHeader("X-Content-Type-Options", "nosniff");
-    },
-  })
-);
-
-// -----------------------------
-// ✅ FIXED CORS CONFIG
+// ✅ CORS CONFIG
 // -----------------------------
 const allowedOrigins = [
   "https://front2-git-main-ygdg12s-projects.vercel.app",
@@ -121,6 +91,58 @@ app.use(
 
 // 🔥 VERY IMPORTANT — FIXES YOUR ERROR
 app.options("*", cors());
+
+// -----------------------------
+// BODY PARSING
+// -----------------------------
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// -----------------------------
+// FILE UPLOAD SERVING (with CORS)
+// -----------------------------
+app.use(
+  "/uploads",
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.warn("❌ CORS blocked (uploads):", origin);
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+  express.static(path.resolve("./uploads"), {
+    maxAge: "1d",
+    setHeaders: (res) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+    },
+  })
+);
+
+// Legacy uploads path (optional, also CORS-enabled)
+app.use(
+  "/uploads/found-items",
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.warn("❌ CORS blocked (legacy uploads):", origin);
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+  express.static(path.resolve("./routes/routes/uploads/found-items"), {
+    maxAge: "1d",
+    setHeaders: (res) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+    },
+  })
+);
 
 // -----------------------------
 // API ROUTES
