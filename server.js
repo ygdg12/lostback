@@ -45,7 +45,7 @@ app.use(
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:", "blob:"],
+        imgSrc: ["'self'", "data:", "blob:", "https:", "http:"],
       }
     }
   })
@@ -101,8 +101,59 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // -----------------------------
 // FILE UPLOAD SERVING (with CORS)
 // -----------------------------
+// Handle OPTIONS requests for uploads (CORS preflight)
+app.options("/uploads/*", cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
+// Middleware to capture request for static file serving
+const captureRequest = (req, res, next) => {
+  res.locals.origin = req.headers.origin;
+  next();
+};
+
+// Helper function to set CORS and content-type headers for images
+const setImageHeaders = (res, filePath) => {
+  // Set proper Content-Type based on file extension
+  const ext = path.extname(filePath).toLowerCase();
+  const contentTypes = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml'
+  };
+  if (contentTypes[ext]) {
+    res.setHeader('Content-Type', contentTypes[ext]);
+  }
+  
+  // Set CORS headers explicitly (backup in case cors middleware doesn't apply)
+  const origin = res.locals.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  } else if (!origin) {
+    // No origin header (e.g., direct browser access, Postman) - no credentials with wildcard
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+};
+
 app.use(
   "/uploads",
+  captureRequest,
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
@@ -116,8 +167,8 @@ app.use(
   }),
   express.static(path.resolve("./uploads"), {
     maxAge: "1d",
-    setHeaders: (res) => {
-      res.setHeader("X-Content-Type-Options", "nosniff");
+    setHeaders: (res, filePath, stat) => {
+      setImageHeaders(res, filePath);
     },
   })
 );
@@ -125,6 +176,7 @@ app.use(
 // Legacy uploads path (optional, also CORS-enabled)
 app.use(
   "/uploads/found-items",
+  captureRequest,
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
@@ -138,8 +190,8 @@ app.use(
   }),
   express.static(path.resolve("./routes/routes/uploads/found-items"), {
     maxAge: "1d",
-    setHeaders: (res) => {
-      res.setHeader("X-Content-Type-Options", "nosniff");
+    setHeaders: (res, filePath, stat) => {
+      setImageHeaders(res, filePath);
     },
   })
 );
