@@ -7,23 +7,6 @@ import User from "../../routes/models/User.js"
 
 const router = express.Router()
 
-const toAbsoluteImageUrl = (req, imagePath) => {
-  if (!imagePath) return imagePath
-  if (/^https?:\/\//i.test(imagePath)) return imagePath
-  
-  // Normalize path: ensure it starts with /uploads if it's a found-items or lost-items path
-  let normalizedPath = imagePath
-  if (normalizedPath.startsWith("/found-items/") && !normalizedPath.startsWith("/uploads/found-items/")) {
-    normalizedPath = `/uploads${normalizedPath}`
-  } else if (normalizedPath.startsWith("/lost-items/") && !normalizedPath.startsWith("/uploads/lost-items/")) {
-    normalizedPath = `/uploads${normalizedPath}`
-  } else if (!normalizedPath.startsWith("/")) {
-    normalizedPath = `/${normalizedPath}`
-  }
-  
-  return `${req.protocol}://${req.get("host")}${normalizedPath}`
-}
-
 // Helper function to get user from token (optional auth)
 const getOptionalUser = async (req) => {
   const authHeader = req.headers.authorization
@@ -100,15 +83,7 @@ router.get("/", async (req, res) => {
     const items = await FoundItem.find()
       .populate("foundBy", "_id name email studentId phone")
       .sort({ createdAt: -1 })
-    const normalized = items.map((item) => {
-      const obj = item.toObject({ virtuals: true })
-      obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p))
-      // Compatibility fields for frontends that expect a single image
-      obj.imageUrl = obj.images?.[0] || null
-      obj.image = obj.images?.[0] || null
-      return obj
-    })
-    res.status(200).json({ items: normalized })
+    res.status(200).json({ items })
   } catch (error) {
     console.error("Error fetching found items:", error)
     res.status(500).json({ message: "Failed to load items", error: error.message })
@@ -121,14 +96,7 @@ router.get("/my-items", protect, async (req, res) => {
     const items = await FoundItem.find({ foundBy: req.user._id })
       .populate("foundBy", "_id name email studentId phone")
       .sort({ createdAt: -1 })
-    const normalized = items.map((item) => {
-      const obj = item.toObject({ virtuals: true })
-      obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p))
-      obj.imageUrl = obj.images?.[0] || null
-      obj.image = obj.images?.[0] || null
-      return obj
-    })
-    res.status(200).json({ items: normalized })
+    res.status(200).json({ items })
   } catch (error) {
     console.error("Error fetching user's found items:", error)
     res.status(500).json({ message: "Failed to load items", error: error.message })

@@ -2,28 +2,10 @@
 import express from "express";
 import LostItem from "../models/LostItem.js";
 import { protect, requireRole } from "../middleware/auth.js";
-import { uploadLost } from "../middleware/upload.js";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
 const router = express.Router();
-
-const toAbsoluteImageUrl = (req, imagePath) => {
-  if (!imagePath) return imagePath;
-  if (/^https?:\/\//i.test(imagePath)) return imagePath;
-  
-  // Normalize path: ensure it starts with /uploads if it's a found-items or lost-items path
-  let normalizedPath = imagePath;
-  if (normalizedPath.startsWith("/found-items/") && !normalizedPath.startsWith("/uploads/found-items/")) {
-    normalizedPath = `/uploads${normalizedPath}`;
-  } else if (normalizedPath.startsWith("/lost-items/") && !normalizedPath.startsWith("/uploads/lost-items/")) {
-    normalizedPath = `/uploads${normalizedPath}`;
-  } else if (!normalizedPath.startsWith("/")) {
-    normalizedPath = `/${normalizedPath}`;
-  }
-  
-  return `${req.protocol}://${req.get("host")}${normalizedPath}`;
-};
 
 // GET /api/lost-items - Fetch all lost items (public, optional filters)
 router.get("/", async (req, res) => {
@@ -45,16 +27,7 @@ router.get("/", async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(100);
 
-    const normalized = items.map((item) => {
-      const obj = item.toObject({ virtuals: true });
-      obj.images = (obj.images || []).map((p) => toAbsoluteImageUrl(req, p));
-      // Compatibility fields for frontends that expect a single image
-      obj.imageUrl = obj.images?.[0] || null;
-      obj.image = obj.images?.[0] || null;
-      return obj;
-    });
-
-    res.json({ items: normalized });
+    res.json({ items });
   } catch (error) {
     console.error("Error fetching lost items:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -62,10 +35,8 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/lost-items - Create new lost item (public, but attach user if authenticated)
-router.post("/", uploadLost.array("images", 5), async (req, res) => {
+router.post("/", async (req, res) => {
   try {
-    const imagePaths = (req.files || []).map((file) => `/uploads/lost-items/${file.filename}`);
-
     // Optional auth - try to get user from token
     let userId = null;
     let userEmail = null;
@@ -115,7 +86,6 @@ router.post("/", uploadLost.array("images", 5), async (req, res) => {
         email: contactEmail || userEmail || undefined,
         phone: contactPhone || undefined,
       },
-      images: imagePaths,
       color,
       brand,
       size,
@@ -130,12 +100,6 @@ router.post("/", uploadLost.array("images", 5), async (req, res) => {
     res.status(201).json({ message: "Lost item reported successfully", item: lostItem });
   } catch (error) {
     console.error("Error creating lost item:", error);
-    if (error.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ message: "File too large (max 5MB)" });
-    }
-    if (error.message === "Only image files are allowed") {
-      return res.status(400).json({ message: error.message });
-    }
     res.status(500).json({ message: "Internal server error" });
   }
 });
