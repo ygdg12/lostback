@@ -10,8 +10,18 @@ const router = express.Router()
 const toAbsoluteImageUrl = (req, imagePath) => {
   if (!imagePath) return imagePath
   if (/^https?:\/\//i.test(imagePath)) return imagePath
-  if (!imagePath.startsWith("/")) return imagePath
-  return `${req.protocol}://${req.get("host")}${imagePath}`
+  
+  // Normalize path: ensure it starts with /uploads if it's a found-items or lost-items path
+  let normalizedPath = imagePath
+  if (normalizedPath.startsWith("/found-items/") && !normalizedPath.startsWith("/uploads/found-items/")) {
+    normalizedPath = `/uploads${normalizedPath}`
+  } else if (normalizedPath.startsWith("/lost-items/") && !normalizedPath.startsWith("/uploads/lost-items/")) {
+    normalizedPath = `/uploads${normalizedPath}`
+  } else if (!normalizedPath.startsWith("/")) {
+    normalizedPath = `/${normalizedPath}`
+  }
+  
+  return `${req.protocol}://${req.get("host")}${normalizedPath}`
 }
 
 // Helper function to get user from token (optional auth)

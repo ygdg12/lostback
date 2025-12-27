@@ -222,6 +222,37 @@ app.use(
   })
 );
 
+// Handle legacy paths without /uploads prefix (redirect to correct path)
+app.get("/found-items/:filename", captureRequest, cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}), (req, res) => {
+  const filename = req.params.filename;
+  const correctPath = `/uploads/found-items/${filename}`;
+  res.redirect(301, correctPath);
+});
+
+app.get("/lost-items/:filename", captureRequest, cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}), (req, res) => {
+  const filename = req.params.filename;
+  const correctPath = `/uploads/lost-items/${filename}`;
+  res.redirect(301, correctPath);
+});
+
 // -----------------------------
 // API ROUTES
 // -----------------------------
