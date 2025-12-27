@@ -63,33 +63,47 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // CORS Configuration - MUST be before all routes
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim().replace(/\/$/, ""))
   : [
       "https://foundcloud.vercel.app",
+      "https://foundcloud-xi.vercel.app",
       "https://front2-git-main-ygdg12s-projects.vercel.app",
       "https://front2-bo950y4cp-ygdg12s-projects.vercel.app",
-      "https://foundcloud-xi.vercel.app/",
       "https://front2-ruddy.vercel.app",
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:5000",
     ];
 
+// Normalize origin by removing trailing slash
+const normalizeOrigin = (origin) => {
+  if (!origin) return origin;
+  return origin.replace(/\/$/, "");
+};
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, or Postman)
     if (!origin) return callback(null, true);
+    
+    // Normalize the incoming origin
+    const normalizedOrigin = normalizeOrigin(origin);
     
     // In development, allow all origins for easier testing
     if (process.env.NODE_ENV !== "production") {
       return callback(null, true);
     }
     
-    // In production, only allow specified origins
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // In production, only allow specified origins (case-insensitive comparison)
+    const isAllowed = allowedOrigins.some(
+      (allowed) => normalizeOrigin(allowed).toLowerCase() === normalizedOrigin.toLowerCase()
+    );
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
-      console.warn(`CORS blocked origin: ${origin}`);
+      console.warn(`CORS blocked origin: ${origin} (normalized: ${normalizedOrigin})`);
+      console.warn(`Allowed origins: ${allowedOrigins.join(", ")}`);
       callback(new Error("Not allowed by CORS"));
     }
   },
@@ -102,8 +116,28 @@ const corsOptions = {
 // Apply CORS globally
 app.use(cors(corsOptions));
 
-// Handle preflight requests explicitly
-app.options("*", cors(corsOptions));
+// Handle preflight requests explicitly for all routes
+app.options("*", (req, res) => {
+  const origin = req.headers.origin;
+  const normalizedOrigin = normalizeOrigin(origin);
+  
+  if (!origin || process.env.NODE_ENV !== "production") {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+  } else {
+    const isAllowed = allowedOrigins.some(
+      (allowed) => normalizeOrigin(allowed).toLowerCase() === normalizedOrigin.toLowerCase()
+    );
+    if (isAllowed) {
+      res.header("Access-Control-Allow-Origin", origin);
+    }
+  }
+  
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Max-Age", "86400");
+  res.sendStatus(204);
+});
 
 // ✅ Serve uploads folder (fixed path: backend/uploads) - with CORS
 app.use(
