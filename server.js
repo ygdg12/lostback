@@ -68,6 +68,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       "https://foundcloud.vercel.app",
       "https://front2-git-main-ygdg12s-projects.vercel.app",
       "https://front2-bo950y4cp-ygdg12s-projects.vercel.app",
+      "https://foundcloud-xi.vercel.app/",
       "https://front2-ruddy.vercel.app",
       "http://localhost:3000",
       "http://localhost:5173",
