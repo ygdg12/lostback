@@ -1,6 +1,7 @@
 import express from "express";
 import dns from "dns";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -151,6 +152,14 @@ const setImageHeaders = (res, filePath) => {
   res.setHeader('Cache-Control', 'public, max-age=86400');
 };
 
+// Static file serving with 404 handling
+const staticUploads = express.static(path.resolve("./uploads"), {
+  maxAge: "1d",
+  setHeaders: (res, filePath, stat) => {
+    setImageHeaders(res, filePath);
+  },
+});
+
 app.use(
   "/uploads",
   captureRequest,
@@ -165,12 +174,29 @@ app.use(
     methods: ["GET", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
-  express.static(path.resolve("./uploads"), {
-    maxAge: "1d",
-    setHeaders: (res, filePath, stat) => {
-      setImageHeaders(res, filePath);
-    },
-  })
+  (req, res, next) => {
+    // Log file requests for debugging
+    if (req.path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      const filePath = path.join(path.resolve("./uploads"), req.path);
+      if (!fs.existsSync(filePath)) {
+        console.warn(`⚠️  Image not found: ${req.path} (full path: ${filePath})`);
+      }
+    }
+    next();
+  },
+  staticUploads,
+  (req, res, next) => {
+    // If static middleware didn't serve the file, it doesn't exist
+    if (req.path.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      console.error(`❌ 404 - Image not found: ${req.path}`);
+      return res.status(404).json({ 
+        error: "Image not found",
+        path: req.path,
+        message: "This image may have been deleted or the server was redeployed. Please re-upload the image."
+      });
+    }
+    next();
+  }
 );
 
 // Legacy uploads path (optional, also CORS-enabled)
@@ -215,6 +241,36 @@ app.get("/api/health", (req, res) => {
     environment: process.env.NODE_ENV || "development",
     timestamp: new Date().toISOString(),
   });
+});
+
+// Diagnostic endpoint to check uploads directory
+app.get("/api/debug/uploads", (req, res) => {
+  const uploadsPath = path.resolve("./uploads");
+  const foundItemsPath = path.join(uploadsPath, "found-items");
+  const lostItemsPath = path.join(uploadsPath, "lost-items");
+  
+  try {
+    const foundItemsFiles = fs.existsSync(foundItemsPath) 
+      ? fs.readdirSync(foundItemsPath).slice(0, 10) 
+      : [];
+    const lostItemsFiles = fs.existsSync(lostItemsPath) 
+      ? fs.readdirSync(lostItemsPath).slice(0, 10) 
+      : [];
+    
+    res.json({
+      uploadsPath,
+      foundItemsPath,
+      lostItemsPath,
+      foundItemsExists: fs.existsSync(foundItemsPath),
+      lostItemsExists: fs.existsSync(lostItemsPath),
+      foundItemsCount: foundItemsFiles.length,
+      lostItemsCount: lostItemsFiles.length,
+      sampleFoundItems: foundItemsFiles,
+      sampleLostItems: lostItemsFiles,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get("/", (req, res) => {
