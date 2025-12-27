@@ -61,9 +61,53 @@ app.use("/api", limiter);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// ✅ Serve uploads folder (fixed path: backend/uploads)
+// CORS Configuration - MUST be before all routes
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
+  : [
+      "https://foundcloud.vercel.app",
+      "https://front2-git-main-ygdg12s-projects.vercel.app",
+      "https://front2-bo950y4cp-ygdg12s-projects.vercel.app",
+      "https://front2-ruddy.vercel.app",
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:5000",
+    ];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or Postman)
+    if (!origin) return callback(null, true);
+    
+    // In development, allow all origins for easier testing
+    if (process.env.NODE_ENV !== "production") {
+      return callback(null, true);
+    }
+    
+    // In production, only allow specified origins
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Content-Type"],
+};
+
+// Apply CORS globally
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options("*", cors(corsOptions));
+
+// ✅ Serve uploads folder (fixed path: backend/uploads) - with CORS
 app.use(
   "/uploads",
+  cors(corsOptions),
   express.static(path.resolve("./uploads"), {
     maxAge: "1d",
     setHeaders: (res, filePath) => {
@@ -75,9 +119,10 @@ app.use(
   })
 );
 
-// ✅ Backward compatibility: also serve legacy path where older files were stored
+// ✅ Backward compatibility: also serve legacy path where older files were stored - with CORS
 app.use(
   "/uploads/found-items",
+  cors(corsOptions),
   express.static(path.resolve("./routes/routes/uploads/found-items"), {
     maxAge: "1d",
     setHeaders: (res, filePath) => {
@@ -86,40 +131,6 @@ app.use(
       }
       res.setHeader("X-Content-Type-Options", "nosniff");
     },
-  })
-);
-
-// CORS Configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
-  : [
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "http://localhost:5000",
-    ];
-
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, or Postman)
-      if (!origin) return callback(null, true);
-      
-      // In development, allow all origins for easier testing
-      if (process.env.NODE_ENV !== "production") {
-        return callback(null, true);
-      }
-      
-      // In production, only allow specified origins
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        console.warn(`CORS blocked origin: ${origin}`);
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
@@ -154,6 +165,15 @@ app.get("/", (req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error("Global error:", err);
+  
+  // Handle CORS errors
+  if (err.message && err.message.includes("CORS")) {
+    return res.status(403).json({
+      message: "CORS policy violation",
+      error: err.message,
+    });
+  }
+  
   res.status(err.status || 500).json({
     message: err.message || "Internal server error",
     ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
