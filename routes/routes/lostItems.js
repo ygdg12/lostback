@@ -2,6 +2,7 @@
 import express from "express";
 import LostItem from "../models/LostItem.js";
 import { protect, requireRole } from "../middleware/auth.js";
+import { uploadLost } from "../middleware/upload.js";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
@@ -35,8 +36,14 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/lost-items - Create new lost item (public, but attach user if authenticated)
-router.post("/", async (req, res) => {
+router.post("/", uploadLost.array("images", 5), async (req, res) => {
   try {
+    // Extract Cloudinary URLs from uploaded files
+    const imageUrls = (req.files || []).map((file) => {
+      // Cloudinary returns secure_url in file object
+      return file.path || file.secure_url || file.url;
+    }).filter(Boolean); // Remove any undefined/null values
+
     // Optional auth - try to get user from token
     let userId = null;
     let userEmail = null;
@@ -86,6 +93,7 @@ router.post("/", async (req, res) => {
         email: contactEmail || userEmail || undefined,
         phone: contactPhone || undefined,
       },
+      images: imageUrls,
       color,
       brand,
       size,
@@ -100,6 +108,12 @@ router.post("/", async (req, res) => {
     res.status(201).json({ message: "Lost item reported successfully", item: lostItem });
   } catch (error) {
     console.error("Error creating lost item:", error);
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ message: "File too large (max 10MB)" });
+    }
+    if (error.message === "Only image files are allowed") {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: "Internal server error" });
   }
 });

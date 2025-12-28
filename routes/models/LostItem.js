@@ -43,6 +43,20 @@ const lostItemSchema = new mongoose.Schema(
     images: [
       {
         type: String,
+        trim: true,
+        validate: {
+          validator: (value) => {
+            if (!value || value === "") return true;
+            // Accept Cloudinary URLs or local paths (for backward compatibility)
+            return (
+              value.startsWith("https://res.cloudinary.com/") ||
+              value.startsWith("http://res.cloudinary.com/") ||
+              value.startsWith("/uploads/lost-items/") ||
+              value.startsWith("/uploads/found-items/")
+            );
+          },
+          message: "Image must be a valid Cloudinary URL or local path",
+        },
       },
     ],
     status: {

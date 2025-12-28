@@ -26,8 +26,11 @@ const getOptionalUser = async (req) => {
 // POST /api/found-items - Add a new found item
 router.post("/", upload.array("images", 5), async (req, res) => {
   try {
-    // Public URLs served by server.js static handler
-    const imagePaths = (req.files || []).map((file) => `/uploads/found-items/${file.filename}`)
+    // Extract Cloudinary URLs from uploaded files
+    const imageUrls = (req.files || []).map((file) => {
+      // Cloudinary returns secure_url in file object
+      return file.path || file.secure_url || file.url;
+    }).filter(Boolean); // Remove any undefined/null values
 
     // Get user if authenticated (optional)
     const user = await getOptionalUser(req)
@@ -45,7 +48,7 @@ router.post("/", upload.array("images", 5), async (req, res) => {
       dateFound: req.body.dateFound,
       contactEmail: req.body.contactEmail,
       contactPhone: req.body.contactPhone,
-      images: imagePaths,
+      images: imageUrls,
       foundBy: user?._id || null,
     })
 

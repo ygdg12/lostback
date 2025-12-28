@@ -68,12 +68,15 @@ const foundItemSchema = new mongoose.Schema(
         validate: {
           validator: (value) => {
             if (value === "") return true
+            // Accept Cloudinary URLs or local paths
             return (
+              value.startsWith("https://res.cloudinary.com/") ||
+              value.startsWith("http://res.cloudinary.com/") ||
               value.startsWith("/uploads/found-items/") ||
               value.startsWith("/routes/routes/uploads/found-items/")
             )
           },
-          message: "Image path must be under /uploads/found-items/",
+          message: "Image must be a valid Cloudinary URL or local path",
         },
       },
     ],
