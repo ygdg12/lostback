@@ -113,31 +113,11 @@ const corsOptions = {
   exposedHeaders: ["Content-Type"],
 };
 
-// Apply CORS globally
+// Apply CORS globally - MUST be before all routes
 app.use(cors(corsOptions));
 
-// Handle preflight requests explicitly for all routes
-app.options("*", (req, res) => {
-  const origin = req.headers.origin;
-  const normalizedOrigin = normalizeOrigin(origin);
-  
-  if (!origin || process.env.NODE_ENV !== "production") {
-    res.header("Access-Control-Allow-Origin", origin || "*");
-  } else {
-    const isAllowed = allowedOrigins.some(
-      (allowed) => normalizeOrigin(allowed).toLowerCase() === normalizedOrigin.toLowerCase()
-    );
-    if (isAllowed) {
-      res.header("Access-Control-Allow-Origin", origin);
-    }
-  }
-  
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Max-Age", "86400");
-  res.sendStatus(204);
-});
+// Explicit OPTIONS handler - must respond with CORS headers for preflight
+app.options("*", cors(corsOptions));
 
 // ✅ Serve uploads folder (fixed path: backend/uploads) - with CORS
 app.use(
