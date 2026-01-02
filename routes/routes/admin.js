@@ -1,6 +1,7 @@
 // routes/admin.js
 import express from "express";
 import User from "../models/User.js";
+import VerificationCode from "../models/VerificationCode.js";
 import { protect, requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -82,6 +83,96 @@ router.delete("/users/:id", protect, requireRole("admin"), async (req, res) => {
     res.json({ message: "User deleted successfully" });
   } catch (error) {
     console.error("Error deleting user:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// POST /api/admin/verification-codes - Generate verification code for security officer (admin only)
+router.post("/verification-codes", protect, requireRole("admin"), async (req, res) => {
+  try {
+    const { expiresInDays = 7 } = req.body;
+
+    // Generate a random 8-character code
+    const generateCode = () => {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excluding confusing chars
+      let code = "";
+      for (let i = 0; i < 8; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    };
+
+    // Ensure code is unique
+    let code;
+    let isUnique = false;
+    let attempts = 0;
+    while (!isUnique && attempts < 10) {
+      code = generateCode();
+      const existing = await VerificationCode.findOne({ code });
+      if (!existing) isUnique = true;
+      attempts++;
+    }
+
+    if (!isUnique) {
+      return res.status(500).json({ message: "Failed to generate unique code" });
+    }
+
+    // Calculate expiration date
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + (expiresInDays || 7));
+
+    // Create verification code
+    const verificationCode = new VerificationCode({
+      code,
+      role: "staff",
+      createdBy: req.user._id,
+      expiresAt,
+    });
+
+    await verificationCode.save();
+
+    res.status(201).json({
+      message: "Verification code generated successfully",
+      code: {
+        id: verificationCode._id,
+        code: verificationCode.code,
+        role: verificationCode.role,
+        expiresAt: verificationCode.expiresAt,
+        createdAt: verificationCode.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Error generating verification code:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// GET /api/admin/verification-codes - Get all verification codes (admin only)
+router.get("/verification-codes", protect, requireRole("admin"), async (req, res) => {
+  try {
+    const codes = await VerificationCode.find({})
+      .populate("createdBy", "name email")
+      .populate("usedBy", "name email")
+      .sort({ createdAt: -1 });
+
+    res.json({ codes });
+  } catch (error) {
+    console.error("Error fetching verification codes:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// DELETE /api/admin/verification-codes/:id - Delete verification code (admin only)
+router.delete("/verification-codes/:id", protect, requireRole("admin"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const code = await VerificationCode.findByIdAndDelete(id);
+
+    if (!code) return res.status(404).json({ message: "Verification code not found" });
+
+    res.json({ message: "Verification code deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting verification code:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });

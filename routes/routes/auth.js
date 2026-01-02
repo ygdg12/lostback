@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js";
+import VerificationCode from "../models/VerificationCode.js";
 
 const router = express.Router();
 
@@ -141,6 +142,7 @@ router.post("/signup", async (req, res) => {
     const role = (req.body.role || "user").trim();
     const studentId = (req.body.studentId || "").trim() || undefined;
     const phone = (req.body.phone || "").trim() || undefined;
+    const verificationCode = (req.body.verificationCode || "").trim().toUpperCase();
 
     // Validate required fields
     if (!name || !email || !password) {
@@ -150,6 +152,32 @@ router.post("/signup", async (req, res) => {
     // Validate role
     if (role && !["user", "staff"].includes(role)) {
       return res.status(400).json({ message: "Invalid role. Must be 'user' or 'staff'" });
+    }
+
+    // If signing up as staff (security officer), require verification code
+    if (role === "staff") {
+      if (!verificationCode) {
+        return res.status(400).json({ 
+          message: "Verification code is required for security officer registration" 
+        });
+      }
+
+      // Find and validate verification code
+      const codeDoc = await VerificationCode.findOne({ code: verificationCode });
+
+      if (!codeDoc) {
+        return res.status(400).json({ message: "Invalid verification code" });
+      }
+
+      // Check if code is already used
+      if (codeDoc.isUsed) {
+        return res.status(400).json({ message: "Verification code has already been used" });
+      }
+
+      // Check if code is expired
+      if (new Date() >= codeDoc.expiresAt) {
+        return res.status(400).json({ message: "Verification code has expired" });
+      }
     }
 
     // Check if user already exists
@@ -174,6 +202,17 @@ router.post("/signup", async (req, res) => {
     });
 
     await user.save();
+
+    // If staff registration, mark verification code as used and link to user
+    if (role === "staff" && verificationCode) {
+      const codeDoc = await VerificationCode.findOne({ code: verificationCode });
+      if (codeDoc) {
+        codeDoc.isUsed = true;
+        codeDoc.usedBy = user._id;
+        codeDoc.usedAt = new Date();
+        await codeDoc.save();
+      }
+    }
 
     // Auto sign-in after successful signup
     const token = jwt.sign(
