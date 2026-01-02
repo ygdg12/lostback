@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import VerificationCode from "../models/VerificationCode.js";
+import { protect } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -286,6 +287,33 @@ router.post("/signup", async (req, res) => {
       message: "Internal server error",
       ...(process.env.NODE_ENV === "development" && { error: error.message })
     });
+  }
+});
+
+// GET /api/auth/me - Get current user info (protected)
+router.get("/me", protect, async (req, res) => {
+  try {
+    // User is already attached to req by protect middleware
+    const user = await User.findById(req.user._id).select("-password");
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const userData = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      studentId: user.studentId,
+      phone: user.phone,
+      status: user.status,
+    };
+
+    res.json({ user: userData });
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
