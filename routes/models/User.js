@@ -9,6 +9,24 @@ const userSchema = new mongoose.Schema({
   studentId: { type: String },
   phone: { type: String },
   adminSecret: { type: String },
+  status: {
+    type: String,
+    enum: ["pending", "approved", "rejected"],
+    default: "pending",
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  rejectedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  approvedAt: { type: Date, default: null },
+  rejectedAt: { type: Date, default: null },
+  rejectionReason: { type: String, default: null },
 }, { timestamps: true });
 
 // Hash password before saving

@@ -43,6 +43,7 @@ router.post("/signin", async (req, res) => {
           role: "admin",
           studentId: "ADMIN001",
           phone: "+1234567890",
+          status: "approved", // Admin is always approved
         });
         await adminUser.save();
       }
@@ -61,6 +62,7 @@ router.post("/signin", async (req, res) => {
         role: adminUser.role,
         studentId: adminUser.studentId,
         phone: adminUser.phone,
+        status: adminUser.status || "approved",
       };
 
       return res.json({
@@ -82,6 +84,23 @@ router.post("/signin", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    // Check if user is approved (admin and staff are always approved)
+    if (user.role !== "admin" && user.role !== "staff" && user.status !== "approved") {
+      if (user.status === "pending") {
+        return res.status(403).json({ 
+          message: "Your account is pending approval. Please wait for admin approval.",
+          status: "pending"
+        });
+      }
+      if (user.status === "rejected") {
+        return res.status(403).json({ 
+          message: "Your account has been rejected. Please contact support.",
+          status: "rejected",
+          reason: user.rejectionReason
+        });
+      }
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { id: user._id },
@@ -97,6 +116,7 @@ router.post("/signin", async (req, res) => {
       role: user.role,
       studentId: user.studentId,
       phone: user.phone,
+      status: user.status,
     };
 
     res.json({
@@ -191,6 +211,12 @@ router.post("/signup", async (req, res) => {
         .json({ message: "User with this email or student ID already exists" });
     }
 
+    // Determine initial status:
+    // - Staff (with verification code) = auto-approved
+    // - Admin = auto-approved (but can't be created via signup)
+    // - Regular users = pending approval
+    const initialStatus = role === "staff" ? "approved" : "pending";
+
     // Create new user (password will be hashed by pre-save hook)
     const user = new User({
       name,
@@ -199,6 +225,7 @@ router.post("/signup", async (req, res) => {
       role: role === "admin" ? "user" : role, // Prevent admin role creation via signup
       studentId,
       phone,
+      status: initialStatus,
     });
 
     await user.save();
@@ -212,6 +239,9 @@ router.post("/signup", async (req, res) => {
         codeDoc.usedAt = new Date();
         await codeDoc.save();
       }
+      // Auto-approve staff users
+      user.status = "approved";
+      await user.save();
     }
 
     // Auto sign-in after successful signup
@@ -228,9 +258,14 @@ router.post("/signup", async (req, res) => {
       role: user.role,
       studentId: user.studentId,
       phone: user.phone,
+      status: user.status,
     };
 
-    res.status(201).json({ message: "User created successfully", token, user: userData });
+    const message = user.status === "pending" 
+      ? "Account created successfully. Please wait for admin approval before signing in."
+      : "User created successfully";
+
+    res.status(201).json({ message, token, user: userData });
   } catch (error) {
     console.error("Sign up error:", error);
     

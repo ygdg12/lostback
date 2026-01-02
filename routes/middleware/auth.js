@@ -26,6 +26,22 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Not authorized, user not found" });
     }
 
+    // Check if user is approved (admin and staff are always approved)
+    if (user.role !== "admin" && user.role !== "staff" && user.status !== "approved") {
+      if (user.status === "pending") {
+        return res.status(403).json({ 
+          message: "Your account is pending approval. Please wait for admin approval.",
+          status: "pending"
+        });
+      }
+      if (user.status === "rejected") {
+        return res.status(403).json({ 
+          message: "Your account has been rejected. Please contact support.",
+          status: "rejected"
+        });
+      }
+    }
+
     req.user = user; // Attach user to request
     next();
   } catch (err) {
