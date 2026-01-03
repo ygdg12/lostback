@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import VerificationCode from "../models/VerificationCode.js";
-import { protect } from "../middleware/auth.js";
+import { protect, verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -291,25 +291,31 @@ router.post("/signup", async (req, res) => {
 });
 
 // GET /api/auth/me - Get current user info (protected)
-router.get("/me", protect, async (req, res) => {
+// Uses verifyToken instead of protect to allow pending/rejected users to check their status
+router.get("/me", verifyToken, async (req, res) => {
   try {
-    // User is already attached to req by protect middleware
-    const user = await User.findById(req.user._id).select("-password");
+    // User is already attached to req by verifyToken middleware
+    const user = req.user;
     
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Return user data in the format expected by frontend
+    // Include both _id and id for compatibility
     const userData = {
-      id: user._id,
+      _id: user._id,
+      id: user._id.toString(),
       name: user.name,
       email: user.email,
-      role: user.role,
-      studentId: user.studentId,
-      phone: user.phone,
-      status: user.status,
+      role: user.role, // "user", "admin", or "staff"
+      status: user.status || "approved", // "pending", "approved", or "rejected"
+      studentId: user.studentId || null,
+      phone: user.phone || null,
+      createdAt: user.createdAt,
     };
 
+    // Return wrapped in user property as specified
     res.json({ user: userData });
   } catch (error) {
     console.error("Error fetching user:", error);

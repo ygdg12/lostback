@@ -109,7 +109,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept"],
   exposedHeaders: ["Content-Type"],
 };
 
@@ -142,7 +142,7 @@ app.use(
     maxAge: "1d",
     setHeaders: (res, filePath) => {
       if (filePath.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        res.setHeader("Content-Type", "image/*");
+      res.setHeader("Content-Type", "image/*");
       }
       res.setHeader("X-Content-Type-Options", "nosniff");
     },
@@ -159,8 +159,8 @@ app.use("/api/search", searchRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "OK", 
+  res.json({
+    status: "OK",
     message: "Server is running", 
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development"
