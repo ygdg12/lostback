@@ -49,11 +49,12 @@ app.use(
   })
 );
 
-// Rate limiting
+// Rate limiting - exclude OPTIONS requests and increase limit
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200, // Increased limit for admin operations
   message: "Too many requests from this IP, please try again later.",
+  skip: (req) => req.method === "OPTIONS", // Skip rate limiting for preflight requests
 });
 app.use("/api", limiter);
 
@@ -125,13 +126,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Explicit OPTIONS handler - must respond with CORS headers for preflight
-app.options("*", (req, res, next) => {
-  const origin = req.headers.origin;
-  console.log(`OPTIONS preflight from: ${origin}`);
-  
-  // Use CORS middleware
-  cors(corsOptions)(req, res, next);
-});
+app.options("*", cors(corsOptions));
 
 // ✅ Serve uploads folder (fixed path: backend/uploads) - with CORS
 app.use(
