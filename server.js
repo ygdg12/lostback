@@ -86,7 +86,6 @@ const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, or Postman)
     if (!origin) {
-      console.log("CORS: Request with no origin (allowed)");
       return callback(null, true);
     }
     
@@ -95,7 +94,6 @@ const corsOptions = {
     
     // In development, allow all origins for easier testing
     if (process.env.NODE_ENV !== "production") {
-      console.log(`CORS: Development mode - allowing origin: ${origin}`);
       return callback(null, true);
     }
     
@@ -105,9 +103,10 @@ const corsOptions = {
     );
     
     if (isAllowed) {
-      console.log(`CORS: Allowed origin: ${origin}`);
+      // Only log blocked origins, not every allowed request
       callback(null, true);
     } else {
+      // Log blocked origins for debugging
       console.error(`❌ CORS BLOCKED: ${origin}`);
       console.error(`   Normalized: ${normalizedOrigin}`);
       console.error(`   Allowed origins: ${allowedOrigins.join(", ")}`);
