@@ -84,13 +84,17 @@ const normalizeOrigin = (origin) => {
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, or Postman)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log("CORS: Request with no origin (allowed)");
+      return callback(null, true);
+    }
     
     // Normalize the incoming origin
     const normalizedOrigin = normalizeOrigin(origin);
     
     // In development, allow all origins for easier testing
     if (process.env.NODE_ENV !== "production") {
+      console.log(`CORS: Development mode - allowing origin: ${origin}`);
       return callback(null, true);
     }
     
@@ -100,24 +104,34 @@ const corsOptions = {
     );
     
     if (isAllowed) {
+      console.log(`CORS: Allowed origin: ${origin}`);
       callback(null, true);
     } else {
-      console.warn(`CORS blocked origin: ${origin} (normalized: ${normalizedOrigin})`);
-      console.warn(`Allowed origins: ${allowedOrigins.join(", ")}`);
-      callback(new Error("Not allowed by CORS"));
+      console.error(`❌ CORS BLOCKED: ${origin}`);
+      console.error(`   Normalized: ${normalizedOrigin}`);
+      console.error(`   Allowed origins: ${allowedOrigins.join(", ")}`);
+      console.error(`   Current NODE_ENV: ${process.env.NODE_ENV}`);
+      callback(new Error(`CORS: Origin ${origin} is not allowed`));
     }
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "Accept"],
   exposedHeaders: ["Content-Type"],
+  optionsSuccessStatus: 200, // Some legacy browsers (IE11) choke on 204
 };
 
 // Apply CORS globally - MUST be before all routes
 app.use(cors(corsOptions));
 
 // Explicit OPTIONS handler - must respond with CORS headers for preflight
-app.options("*", cors(corsOptions));
+app.options("*", (req, res, next) => {
+  const origin = req.headers.origin;
+  console.log(`OPTIONS preflight from: ${origin}`);
+  
+  // Use CORS middleware
+  cors(corsOptions)(req, res, next);
+});
 
 // ✅ Serve uploads folder (fixed path: backend/uploads) - with CORS
 app.use(
@@ -159,11 +173,29 @@ app.use("/api/search", searchRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
-  res.json({
-    status: "OK",
+  res.json({ 
+    status: "OK", 
     message: "Server is running", 
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development"
+  });
+});
+
+// CORS diagnostic endpoint
+app.get("/api/cors-info", (req, res) => {
+  const origin = req.headers.origin;
+  const normalizedOrigin = origin ? normalizeOrigin(origin) : null;
+  const isAllowed = origin ? allowedOrigins.some(
+    (allowed) => normalizeOrigin(allowed).toLowerCase() === normalizedOrigin.toLowerCase()
+  ) : null;
+  
+  res.json({
+    requestOrigin: origin || "none",
+    normalizedOrigin: normalizedOrigin,
+    isAllowed: isAllowed,
+    allowedOrigins: allowedOrigins,
+    nodeEnv: process.env.NODE_ENV || "development",
+    corsEnabled: true,
   });
 });
 
@@ -181,11 +213,18 @@ app.get("/", (req, res) => {
 app.use((err, req, res, next) => {
   console.error("Global error:", err);
   
-  // Handle CORS errors
+  // Handle CORS errors - still send CORS headers even on error
   if (err.message && err.message.includes("CORS")) {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.some(o => normalizeOrigin(o).toLowerCase() === normalizeOrigin(origin).toLowerCase())) {
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+    }
     return res.status(403).json({
       message: "CORS policy violation",
       error: err.message,
+      origin: origin || "none",
+      allowedOrigins: allowedOrigins,
     });
   }
   
