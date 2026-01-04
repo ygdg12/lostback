@@ -12,7 +12,7 @@ const userSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ["pending", "approved", "rejected"],
-    default: "pending",
+    default: "approved", // All users are auto-approved
   },
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,

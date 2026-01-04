@@ -23,18 +23,8 @@ router.get("/users", protect, requireRole("admin"), async (req, res) => {
   }
 });
 
-// GET /api/admin/users/pending - Get pending approval users (admin only)
-router.get("/users/pending", protect, requireRole("admin"), async (req, res) => {
-  try {
-    const users = await User.find({ status: "pending" })
-      .select("-password")
-      .sort({ createdAt: -1 });
-    res.json({ users });
-  } catch (error) {
-    console.error("Error fetching pending users:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
+// Note: Approval system removed - all users are auto-approved
+// Keeping approve/reject endpoints for backward compatibility but they're not needed
 
 // PATCH /api/admin/users/:id/role - Update user role (admin only)
 router.patch("/users/:id/role", protect, requireRole("admin"), async (req, res) => {

@@ -26,29 +26,10 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Not authorized, user not found" });
     }
 
-    // Admin and staff are ALWAYS approved - ensure their status is correct
-    if (user.role === "admin" || user.role === "staff") {
-      // Force approved status for admin/staff
-      if (user.status !== "approved") {
-        user.status = "approved";
-        await user.save();
-      }
-    } else {
-      // Regular users must be approved
-      if (user.status !== "approved") {
-        if (user.status === "pending") {
-          return res.status(403).json({ 
-            message: "Your account is pending approval. Please wait for admin approval.",
-            status: "pending"
-          });
-        }
-        if (user.status === "rejected") {
-          return res.status(403).json({ 
-            message: "Your account has been rejected. Please contact support.",
-            status: "rejected"
-          });
-        }
-      }
+    // All users are auto-approved - ensure status is approved
+    if (user.status !== "approved") {
+      user.status = "approved";
+      await user.save();
     }
 
     req.user = user; // Attach user to request
