@@ -26,10 +26,9 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Not authorized, user not found" });
     }
 
-    // All users are auto-approved - ensure status is approved
+    // Only approved users can access protected routes
     if (user.status !== "approved") {
-      user.status = "approved";
-      await user.save();
+      return res.status(403).json({ message: "Account not approved by admin yet." });
     }
 
     req.user = user; // Attach user to request

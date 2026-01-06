@@ -238,3 +238,4 @@ navigate(redirectPath);
 - [ ] Regular user gets approved → Can access homepage (no pending page)
 - [ ] Admin/Staff refresh page → Never see pending page
 
+

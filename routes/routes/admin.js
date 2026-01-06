@@ -23,9 +23,6 @@ router.get("/users", protect, requireRole("admin"), async (req, res) => {
   }
 });
 
-// Note: Approval system removed - all users are auto-approved
-// Keeping approve/reject endpoints for backward compatibility but they're not needed
-
 // PATCH /api/admin/users/:id/role - Update user role (admin only)
 router.patch("/users/:id/role", protect, requireRole("admin"), async (req, res) => {
   try {
@@ -57,7 +54,7 @@ router.patch("/users/:id/status", protect, requireRole("admin"), async (req, res
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!["active", "inactive"].includes(status)) {
+    if (!["pending", "approved", "rejected"].includes(status)) {
       return res.status(400).json({ message: "Invalid status" });
     }
 
@@ -65,7 +62,16 @@ router.patch("/users/:id/status", protect, requireRole("admin"), async (req, res
       return res.status(400).json({ message: "Cannot change your own status" });
     }
 
-    const user = await User.findByIdAndUpdate(id, { status }, { new: true }).select("-password");
+    const update = {
+      status,
+      approvedBy: status === "approved" ? req.user._id : null,
+      approvedAt: status === "approved" ? new Date() : null,
+      rejectedBy: status === "rejected" ? req.user._id : null,
+      rejectedAt: status === "rejected" ? new Date() : null,
+      rejectionReason: status === "rejected" ? "Updated by admin" : null,
+    };
+
+    const user = await User.findByIdAndUpdate(id, update, { new: true }).select("-password");
 
     if (!user) return res.status(404).json({ message: "User not found" });
 

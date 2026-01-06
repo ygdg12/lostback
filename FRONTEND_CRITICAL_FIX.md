@@ -335,3 +335,4 @@ const Navigation = () => {
 
 **NEVER check pending status globally. ALWAYS check the CURRENT logged-in user's role and status from the API.**
 
+

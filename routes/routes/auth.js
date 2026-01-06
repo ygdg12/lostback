@@ -85,11 +85,13 @@ router.post("/signin", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // All users are auto-approved - no approval checks needed
-    // Ensure status is approved for all users
-    if (user.status !== "approved") {
-      user.status = "approved";
-      await user.save();
+    // Block access for users awaiting admin approval or rejected
+    if (user.status === "pending") {
+      return res.status(403).json({ message: "Your account is pending admin approval." });
+    }
+
+    if (user.status === "rejected") {
+      return res.status(403).json({ message: "Your account was rejected by an admin." });
     }
 
     // Generate JWT token
@@ -202,7 +204,6 @@ router.post("/signup", async (req, res) => {
         .json({ message: "User with this email or student ID already exists" });
     }
 
-    // All users are auto-approved (no approval system)
     // Create new user (password will be hashed by pre-save hook)
     const user = new User({
       name,
@@ -211,7 +212,7 @@ router.post("/signup", async (req, res) => {
       role: role === "admin" ? "user" : role, // Prevent admin role creation via signup
       studentId,
       phone,
-      status: "approved", // All users are auto-approved
+      status: role === "staff" ? "approved" : "pending", // Staff auto-approved, regular users need admin approval
     });
 
     await user.save();
@@ -227,24 +228,21 @@ router.post("/signup", async (req, res) => {
       }
     }
 
-    // Auto sign-in after successful signup
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    const userData = {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      studentId: user.studentId,
-      phone: user.phone,
-      status: user.status,
-    };
-
-    res.status(201).json({ message: "User created successfully", token, user: userData });
+    // Return minimal data; frontend can poll /api/auth/me after approval
+    res.status(201).json({ 
+      message: user.role === "staff"
+        ? "Staff account created and approved."
+        : "Account created. Please wait for admin approval.",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        studentId: user.studentId,
+        phone: user.phone,
+        status: user.status,
+      },
+    });
   } catch (error) {
     console.error("Sign up error:", error);
     
@@ -287,7 +285,7 @@ router.get("/me", verifyToken, async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role, // "user", "admin", or "staff"
-      status: user.status || "approved", // "pending", "approved", or "rejected"
+      status: user.status, // "pending", "approved", or "rejected"
       studentId: user.studentId || null,
       phone: user.phone || null,
       createdAt: user.createdAt,
