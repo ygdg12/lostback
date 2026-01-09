@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import VerificationCode from "../models/VerificationCode.js";
+import PasswordResetToken from "../models/PasswordResetToken.js";
 import { protect, verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -234,13 +235,13 @@ router.post("/signup", async (req, res) => {
         ? "Staff account created and approved."
         : "Account created. Please wait for admin approval.",
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        studentId: user.studentId,
-        phone: user.phone,
-        status: user.status,
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      studentId: user.studentId,
+      phone: user.phone,
+      status: user.status,
       },
     });
   } catch (error) {
@@ -295,6 +296,53 @@ router.get("/me", verifyToken, async (req, res) => {
     res.json({ user: userData });
   } catch (error) {
     console.error("Error fetching user:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// POST /api/auth/reset-password
+// Body: { email, token, newPassword }
+router.post("/reset-password", async (req, res) => {
+  try {
+    const email = (req.body.email || "").trim().toLowerCase();
+    const token = (req.body.token || "").trim().toUpperCase();
+    const newPassword = req.body.newPassword || "";
+
+    if (!email || !token || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: "Email, reset token, and new password are required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const resetToken = await PasswordResetToken.findOne({
+      user: user._id,
+      token,
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({ message: "Invalid reset token" });
+    }
+
+    if (!resetToken.isValid()) {
+      return res.status(400).json({ message: "Reset token is expired or already used" });
+    }
+
+    // Update password (User model pre-save hook will hash it)
+    user.password = newPassword;
+    await user.save();
+
+    // Mark token as used
+    resetToken.usedAt = new Date();
+    await resetToken.save();
+
+    return res.json({ message: "Password updated successfully. You can now sign in." });
+  } catch (error) {
+    console.error("Reset password error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
