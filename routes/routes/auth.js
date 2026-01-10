@@ -372,6 +372,8 @@ router.post("/request-password-reset", async (req, res) => {
     await resetToken.save();
 
     // Send the code to the user's email
+    let emailSent = false;
+    
     try {
       await sendEmail({
         to: user.email,
@@ -391,16 +393,28 @@ If you did not request this password reset, please ignore this email or contact 
 Thanks,
 FoundCloud Support`,
       });
+      emailSent = true;
       console.log(`✅ Password reset email sent to ${user.email}`);
-    } catch (emailError) {
-      console.error(`❌ Failed to send password reset email to ${user.email}:`, emailError.message);
+      console.log(`   Reset code: ${resetToken.token}`);
+    } catch (emailErr) {
+      console.error(`❌ Failed to send password reset email to ${user.email}`);
+      console.error(`   Error message: ${emailErr.message}`);
+      console.error(`   Full error:`, emailErr);
+      console.error(`   ⚠️ IMPORTANT: Reset token generated but email failed. Token: ${resetToken.token}`);
+      console.error(`   Please check your email configuration in .env file:`);
+      console.error(`   - EMAIL_SERVICE (or EMAIL_HOST)`);
+      console.error(`   - EMAIL_USER`);
+      console.error(`   - EMAIL_PASS`);
       // Still return success to prevent email enumeration
       // Token is generated and stored, admin can share manually if needed
     }
 
     // Always return success message (even if email fails) to prevent user enumeration
+    // But log detailed info on server side
     return res.json({
-      message: "Password reset code sent successfully",
+      message: emailSent 
+        ? "Password reset code sent successfully" 
+        : "Password reset code generated. Please check email configuration if email was not received.",
     });
   } catch (error) {
     console.error("Request password reset error:", error);
