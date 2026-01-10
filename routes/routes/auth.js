@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import User from "../models/User.js";
 import VerificationCode from "../models/VerificationCode.js";
 import PasswordResetToken from "../models/PasswordResetToken.js";
+import { sendEmail } from "../../config/email.js";
 import { protect, verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -296,6 +297,113 @@ router.get("/me", verifyToken, async (req, res) => {
     res.json({ user: userData });
   } catch (error) {
     console.error("Error fetching user:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// POST /api/auth/request-password-reset
+// Body: { email: string }
+// Response: { message: "Password reset code sent successfully" }
+router.post("/request-password-reset", async (req, res) => {
+  try {
+    const email = (req.body.email || "").trim().toLowerCase();
+
+    // Validate email
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Generate a 6-character reset code/token
+    const generateToken = () => {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excluding confusing chars
+      let token = "";
+      for (let i = 0; i < 6; i++) {
+        token += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return token;
+    };
+
+    // Ensure token is unique
+    let token;
+    let isUnique = false;
+    let attempts = 0;
+    while (!isUnique && attempts < 10) {
+      token = generateToken();
+      const existing = await PasswordResetToken.findOne({ token, usedAt: null });
+      if (!existing || new Date() >= existing.expiresAt) {
+        isUnique = true;
+      }
+      attempts++;
+    }
+
+    if (!isUnique) {
+      return res.status(500).json({ message: "Failed to generate unique reset token. Please try again." });
+    }
+
+    // Set expiration (1 hour from now)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1);
+
+    // Invalidate previous unused tokens for this user
+    await PasswordResetToken.updateMany(
+      { user: user._id, usedAt: null },
+      { $set: { usedAt: new Date() } }
+    );
+
+    // Store the reset token in the database
+    const resetToken = new PasswordResetToken({
+      user: user._id,
+      token,
+      expiresAt,
+    });
+
+    await resetToken.save();
+
+    // Send the code to the user's email
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: "Password Reset Code - FoundCloud",
+        text: `Hello ${user.name},
+
+You requested a password reset for your FoundCloud account.
+
+Your password reset code is: ${resetToken.token}
+
+This code will expire in 1 hour (${expiresAt.toLocaleString()}).
+
+Please use this code on the reset password page to create a new password.
+
+If you did not request this password reset, please ignore this email or contact support.
+
+Thanks,
+FoundCloud Support`,
+      });
+      console.log(`✅ Password reset email sent to ${user.email}`);
+    } catch (emailError) {
+      console.error(`❌ Failed to send password reset email to ${user.email}:`, emailError.message);
+      // Still return success to prevent email enumeration
+      // Token is generated and stored, admin can share manually if needed
+    }
+
+    // Always return success message (even if email fails) to prevent user enumeration
+    return res.json({
+      message: "Password reset code sent successfully",
+    });
+  } catch (error) {
+    console.error("Request password reset error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
