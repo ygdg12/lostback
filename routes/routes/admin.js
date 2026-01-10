@@ -289,41 +289,67 @@ router.post(
       await resetToken.save();
 
       // Send reset token to user's email
+      let emailSent = false;
+      let emailError = null;
+      
       try {
         await sendEmail({
           to: user.email,
-          subject: "Password Reset Code",
+          subject: "Password Reset Code - FoundCloud",
           text: `Hello ${user.name},
 
 You requested a password reset for your FoundCloud account.
 
 Your password reset code is: ${resetToken.token}
 
-This code will expire at: ${resetToken.expiresAt.toISOString()}
+This code will expire in ${expiresInMinutes} minutes (${resetToken.expiresAt.toLocaleString()}).
 
-If you did not request this, please ignore this email.
+Please use this code to reset your password on the reset password page.
+
+If you did not request this, please ignore this email or contact support.
 
 Thanks,
 FoundCloud Support`,
         });
-      } catch (emailError) {
-        console.error("Error sending password reset email:", emailError);
-        // Do not fail the whole request because of email issue
+        emailSent = true;
+        console.log(`✅ Password reset email sent to ${user.email}`);
+      } catch (err) {
+        emailError = err.message;
+        console.error(`❌ Failed to send password reset email to ${user.email}:`, err.message);
       }
 
-      // Return limited info (do not expose the token in API response)
-      res.status(201).json({
-        message: "Password reset token generated and email sent (if email is configured).",
-        resetToken: {
-          id: resetToken._id,
-          expiresAt: resetToken.expiresAt,
-          user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
+      // Return info with email status
+      if (emailSent) {
+        res.status(201).json({
+          message: "Password reset token generated and email sent successfully.",
+          resetToken: {
+            id: resetToken._id,
+            expiresAt: resetToken.expiresAt,
+            user: {
+              id: user._id,
+              name: user.name,
+              email: user.email,
+            },
           },
-        },
-      });
+        });
+      } else {
+        // Still return success but warn admin that email failed
+        // Token is still generated and can be manually shared
+        res.status(201).json({
+          message: "Password reset token generated, but email could not be sent. Please configure email settings or share the token manually.",
+          warning: emailError || "Email configuration missing",
+          resetToken: {
+            id: resetToken._id,
+            token: resetToken.token, // Include token if email fails so admin can share manually
+            expiresAt: resetToken.expiresAt,
+            user: {
+              id: user._id,
+              name: user.name,
+              email: user.email,
+            },
+          },
+        });
+      }
     } catch (error) {
       console.error("Error generating password reset token:", error);
       res.status(500).json({ message: "Internal server error" });

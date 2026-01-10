@@ -34,6 +34,14 @@ try {
   process.exit(1);
 }
 
+// Check email configuration (import will initialize and log status)
+try {
+  await import("./config/email.js");
+  console.log("📧 Email configuration checked - see logs above for status");
+} catch (err) {
+  console.warn("⚠️ Email configuration check failed:", err.message);
+}
+
 // Security middleware
 app.use(
   helmet({
