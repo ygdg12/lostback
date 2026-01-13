@@ -5,8 +5,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import User from "../models/User.js";
 import VerificationCode from "../models/VerificationCode.js";
-import PasswordResetToken from "../models/PasswordResetToken.js";
-import { sendEmail } from "../../config/email.js";
+import PasswordResetRequest from "../models/PasswordResetRequest.js";
 import { protect, verifyToken } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -301,10 +300,10 @@ router.get("/me", verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/auth/request-password-reset
+// POST /api/auth/request-password-reset-code
 // Body: { email: string }
-// Response: { message: "Password reset code sent successfully" }
-router.post("/request-password-reset", async (req, res) => {
+// Creates a pending password reset request that appears in admin panel
+router.post("/request-password-reset-code", async (req, res) => {
   try {
     const email = (req.body.email || "").trim().toLowerCase();
 
@@ -325,146 +324,95 @@ router.post("/request-password-reset", async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Generate a 6-character reset code/token
-    const generateToken = () => {
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excluding confusing chars
-      let token = "";
-      for (let i = 0; i < 6; i++) {
-        token += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return token;
-    };
-
-    // Ensure token is unique
-    let token;
-    let isUnique = false;
-    let attempts = 0;
-    while (!isUnique && attempts < 10) {
-      token = generateToken();
-      const existing = await PasswordResetToken.findOne({ token, usedAt: null });
-      if (!existing || new Date() >= existing.expiresAt) {
-        isUnique = true;
-      }
-      attempts++;
-    }
-
-    if (!isUnique) {
-      return res.status(500).json({ message: "Failed to generate unique reset token. Please try again." });
-    }
-
-    // Set expiration (1 hour from now)
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1);
-
-    // Invalidate previous unused tokens for this user
-    await PasswordResetToken.updateMany(
-      { user: user._id, usedAt: null },
-      { $set: { usedAt: new Date() } }
-    );
-
-    // Store the reset token in the database
-    const resetToken = new PasswordResetToken({
+    // Check if there's already a pending request for this user
+    const existingRequest = await PasswordResetRequest.findOne({
       user: user._id,
-      token,
-      expiresAt,
+      status: { $in: ["pending", "code_generated"] },
     });
 
-    await resetToken.save();
-
-    // Send the code to the user's email
-    let emailSent = false;
-    
-    try {
-      await sendEmail({
-        to: user.email,
-        subject: "Password Reset Code - FoundCloud",
-        text: `Hello ${user.name},
-
-You requested a password reset for your FoundCloud account.
-
-Your password reset code is: ${resetToken.token}
-
-This code will expire in 1 hour (${expiresAt.toLocaleString()}).
-
-Please use this code on the reset password page to create a new password.
-
-If you did not request this password reset, please ignore this email or contact support.
-
-Thanks,
-FoundCloud Support`,
+    if (existingRequest) {
+      // If code already generated, return success (don't reveal if code exists)
+      if (existingRequest.status === "code_generated") {
+        return res.json({
+          message: "A password reset code has already been generated. Please check with admin or wait for a new code.",
+        });
+      }
+      // If pending, return success
+      return res.json({
+        message: "Password reset request submitted. Please wait for admin to generate a code.",
       });
-      emailSent = true;
-      console.log(`✅ Password reset email sent to ${user.email}`);
-      console.log(`   Reset code: ${resetToken.token}`);
-    } catch (emailErr) {
-      console.error(`❌ Failed to send password reset email to ${user.email}`);
-      console.error(`   Error message: ${emailErr.message}`);
-      console.error(`   Full error:`, emailErr);
-      console.error(`   ⚠️ IMPORTANT: Reset token generated but email failed. Token: ${resetToken.token}`);
-      console.error(`   Please check your email configuration in .env file:`);
-      console.error(`   - EMAIL_SERVICE (or EMAIL_HOST)`);
-      console.error(`   - EMAIL_USER`);
-      console.error(`   - EMAIL_PASS`);
-      // Still return success to prevent email enumeration
-      // Token is generated and stored, admin can share manually if needed
     }
 
-    // Always return success message (even if email fails) to prevent user enumeration
-    // But log detailed info on server side
+    // Create new password reset request
+    const resetRequest = new PasswordResetRequest({
+      user: user._id,
+      status: "pending",
+    });
+
+    await resetRequest.save();
+
     return res.json({
-      message: emailSent 
-        ? "Password reset code sent successfully" 
-        : "Password reset code generated. Please check email configuration if email was not received.",
+      message: "Password reset request submitted. Please wait for admin to generate a code.",
     });
   } catch (error) {
-    console.error("Request password reset error:", error);
+    console.error("Request password reset code error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-// POST /api/auth/reset-password
-// Body: { email, token, newPassword }
-router.post("/reset-password", async (req, res) => {
+// POST /api/auth/reset-password-with-code
+// Body: { email: string, code: string, newPassword: string }
+// Verifies code and resets password
+router.post("/reset-password-with-code", async (req, res) => {
   try {
     const email = (req.body.email || "").trim().toLowerCase();
-    const token = (req.body.token || "").trim().toUpperCase();
+    const code = (req.body.code || "").trim().toUpperCase();
     const newPassword = req.body.newPassword || "";
 
-    if (!email || !token || !newPassword) {
+    if (!email || !code || !newPassword) {
       return res
         .status(400)
-        .json({ message: "Email, reset token, and new password are required" });
+        .json({ message: "Email, code, and new password are required" });
     }
 
+    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const resetToken = await PasswordResetToken.findOne({
+    // Find password reset request with matching code
+    const resetRequest = await PasswordResetRequest.findOne({
       user: user._id,
-      token,
+      code,
+      status: "code_generated",
     });
 
-    if (!resetToken) {
-      return res.status(400).json({ message: "Invalid reset token" });
+    if (!resetRequest) {
+      return res.status(400).json({ message: "Invalid or expired reset code" });
     }
 
-    if (!resetToken.isValid()) {
-      return res.status(400).json({ message: "Reset token is expired or already used" });
+    // Check if code is valid (not expired)
+    if (!resetRequest.isCodeValid()) {
+      resetRequest.status = "expired";
+      await resetRequest.save();
+      return res.status(400).json({ message: "Reset code has expired" });
     }
 
     // Update password (User model pre-save hook will hash it)
     user.password = newPassword;
     await user.save();
 
-    // Mark token as used
-    resetToken.usedAt = new Date();
-    await resetToken.save();
+    // Mark request as completed
+    resetRequest.status = "completed";
+    resetRequest.completedAt = new Date();
+    await resetRequest.save();
 
-    return res.json({ message: "Password updated successfully. You can now sign in." });
+    return res.json({
+      message: "Password updated successfully. You can now sign in.",
+    });
   } catch (error) {
-    console.error("Reset password error:", error);
+    console.error("Reset password with code error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });

@@ -2,8 +2,7 @@
 import express from "express";
 import User from "../models/User.js";
 import VerificationCode from "../models/VerificationCode.js";
-import PasswordResetToken from "../models/PasswordResetToken.js";
-import { sendEmail } from "../../config/email.js";
+import PasswordResetRequest from "../models/PasswordResetRequest.js";
 import { protect, requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -229,134 +228,6 @@ router.post("/verification-codes", protect, requireRole("admin"), async (req, re
   }
 });
 
-// POST /api/admin/users/:id/password-reset-token - Generate password reset token for a user (admin only)
-router.post(
-  "/users/:id/password-reset-token",
-  protect,
-  requireRole("admin"),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { expiresInMinutes = 60 } = req.body;
-
-      const user = await User.findById(id);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      // Generate a simple 6-character alphanumeric token
-      const generateToken = () => {
-        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        let token = "";
-        for (let i = 0; i < 6; i++) {
-          token += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return token;
-      };
-
-      // Ensure token is unique
-      let token;
-      let isUnique = false;
-      let attempts = 0;
-      while (!isUnique && attempts < 10) {
-        token = generateToken();
-        const existing = await PasswordResetToken.findOne({ token });
-        if (!existing) isUnique = true;
-        attempts++;
-      }
-
-      if (!isUnique) {
-        return res.status(500).json({ message: "Failed to generate unique reset token" });
-      }
-
-      // Set expiration
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
-
-      // Invalidate previous tokens for this user
-      await PasswordResetToken.updateMany(
-        { user: user._id, usedAt: null },
-        { $set: { usedAt: new Date() } }
-      );
-
-      // Create new token
-      const resetToken = new PasswordResetToken({
-        user: user._id,
-        token,
-        expiresAt,
-      });
-
-      await resetToken.save();
-
-      // Send reset token to user's email
-      let emailSent = false;
-      let emailError = null;
-      
-      try {
-        await sendEmail({
-          to: user.email,
-          subject: "Password Reset Code - FoundCloud",
-          text: `Hello ${user.name},
-
-You requested a password reset for your FoundCloud account.
-
-Your password reset code is: ${resetToken.token}
-
-This code will expire in ${expiresInMinutes} minutes (${resetToken.expiresAt.toLocaleString()}).
-
-Please use this code to reset your password on the reset password page.
-
-If you did not request this, please ignore this email or contact support.
-
-Thanks,
-FoundCloud Support`,
-        });
-        emailSent = true;
-        console.log(`✅ Password reset email sent to ${user.email}`);
-      } catch (err) {
-        emailError = err.message;
-        console.error(`❌ Failed to send password reset email to ${user.email}:`, err.message);
-      }
-
-      // Return info with email status
-      if (emailSent) {
-        res.status(201).json({
-          message: "Password reset token generated and email sent successfully.",
-          resetToken: {
-            id: resetToken._id,
-            expiresAt: resetToken.expiresAt,
-            user: {
-              id: user._id,
-              name: user.name,
-              email: user.email,
-            },
-          },
-        });
-      } else {
-        // Still return success but warn admin that email failed
-        // Token is still generated and can be manually shared
-        res.status(201).json({
-          message: "Password reset token generated, but email could not be sent. Please configure email settings or share the token manually.",
-          warning: emailError || "Email configuration missing",
-          resetToken: {
-            id: resetToken._id,
-            token: resetToken.token, // Include token if email fails so admin can share manually
-            expiresAt: resetToken.expiresAt,
-            user: {
-              id: user._id,
-              name: user.name,
-              email: user.email,
-            },
-          },
-        });
-      }
-    } catch (error) {
-      console.error("Error generating password reset token:", error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  }
-);
-
 // GET /api/admin/verification-codes - Get all verification codes (admin only)
 router.get("/verification-codes", protect, requireRole("admin"), async (req, res) => {
   try {
@@ -386,5 +257,121 @@ router.delete("/verification-codes/:id", protect, requireRole("admin"), async (r
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// GET /api/admin/password-reset-requests - Get all password reset requests (admin only)
+router.get("/password-reset-requests", protect, requireRole("admin"), async (req, res) => {
+  try {
+    const { status } = req.query; // Optional filter by status: "pending", "code_generated", "completed", "expired"
+    
+    const query = status ? { status } : {};
+    
+    const requests = await PasswordResetRequest.find(query)
+      .populate("user", "name email studentId phone")
+      .populate("generatedBy", "name email")
+      .sort({ createdAt: -1 });
+
+    res.json({ requests });
+  } catch (error) {
+    console.error("Error fetching password reset requests:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// POST /api/admin/password-reset-requests/:id/generate-code - Generate code for a specific password reset request (admin only)
+router.post(
+  "/password-reset-requests/:id/generate-code",
+  protect,
+  requireRole("admin"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { expiresInMinutes = 60 } = req.body; // Default 1 hour expiration
+
+      // Find the password reset request
+      const resetRequest = await PasswordResetRequest.findById(id).populate("user");
+      
+      if (!resetRequest) {
+        return res.status(404).json({ message: "Password reset request not found" });
+      }
+
+      // Check if request is still valid
+      if (resetRequest.status === "completed") {
+        return res.status(400).json({ message: "This password reset request has already been completed" });
+      }
+
+      if (resetRequest.status === "expired") {
+        return res.status(400).json({ message: "This password reset request has expired" });
+      }
+
+      // Generate a 6-character alphanumeric code
+      const generateCode = () => {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excluding confusing chars
+        let code = "";
+        for (let i = 0; i < 6; i++) {
+          code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return code;
+      };
+
+      // Ensure code is unique
+      let code;
+      let isUnique = false;
+      let attempts = 0;
+      while (!isUnique && attempts < 10) {
+        code = generateCode();
+        const existing = await PasswordResetRequest.findOne({
+          code,
+          status: "code_generated",
+          expiresAt: { $gt: new Date() },
+        });
+        if (!existing) isUnique = true;
+        attempts++;
+      }
+
+      if (!isUnique) {
+        return res.status(500).json({ message: "Failed to generate unique code. Please try again." });
+      }
+
+      // Set expiration
+      const expiresAt = new Date();
+      expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
+
+      // Update the request with code
+      resetRequest.code = code;
+      resetRequest.status = "code_generated";
+      resetRequest.expiresAt = expiresAt;
+      resetRequest.generatedBy = req.user._id;
+      resetRequest.generatedAt = new Date();
+
+      await resetRequest.save();
+
+      // Populate user info for response
+      const updatedRequest = await PasswordResetRequest.findById(id)
+        .populate("user", "name email studentId phone")
+        .populate("generatedBy", "name email");
+
+      res.status(200).json({
+        message: "Password reset code generated successfully",
+        request: {
+          id: updatedRequest._id,
+          code: updatedRequest.code,
+          expiresAt: updatedRequest.expiresAt,
+          user: {
+            id: updatedRequest.user._id,
+            name: updatedRequest.user.name,
+            email: updatedRequest.user.email,
+            studentId: updatedRequest.user.studentId,
+            phone: updatedRequest.user.phone,
+          },
+          generatedBy: updatedRequest.generatedBy,
+          generatedAt: updatedRequest.generatedAt,
+        },
+      });
+    } catch (error) {
+      console.error("Error generating password reset code:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  }
+);
 
 export default router;
