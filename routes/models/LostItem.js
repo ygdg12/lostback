@@ -59,6 +59,17 @@ const lostItemSchema = new mongoose.Schema(
         },
       },
     ],
+    // When someone reports that they found this lost item
+    foundVerification: {
+      image: {
+        type: String,
+        trim: true,
+      },
+      reportedAt: {
+        type: Date,
+        default: null,
+      },
+    },
     status: {
       type: String,
       enum: ["active", "found", "closed"],

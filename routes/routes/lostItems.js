@@ -181,6 +181,61 @@ router.patch("/:id", protect, async (req, res) => {
   }
 });
 
+// POST /api/lost-items/:id/mark-found - User reports they found the lost item
+// Verifies by matching uniqueIdentifier and requiring an image
+router.post("/:id/mark-found", uploadLost.single("image"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const providedUniqueId = (req.body.uniqueIdentifier || "").trim();
+
+    if (!providedUniqueId) {
+      return res.status(400).json({ message: "uniqueIdentifier is required" });
+    }
+
+    const item = await LostItem.findById(id);
+    if (!item) {
+      return res.status(404).json({ message: "Lost item not found" });
+    }
+
+    // Check unique identifier match (case-sensitive)
+    if (item.uniqueIdentifier !== providedUniqueId) {
+      return res.status(400).json({ message: "Unique identifier does not match this lost item" });
+    }
+
+    // Require an image as verification
+    if (!req.file) {
+      return res.status(400).json({ message: "Verification image is required" });
+    }
+
+    const imageUrl = req.file.path || req.file.secure_url || req.file.url;
+    if (!imageUrl) {
+      return res.status(500).json({ message: "Failed to process verification image" });
+    }
+
+    // If already marked found/closed, prevent duplicate
+    if (item.status === "found" || item.status === "closed") {
+      return res.status(400).json({ message: "This lost item has already been marked as found or closed" });
+    }
+
+    // Update item as found with verification
+    item.status = "found";
+    item.foundVerification = {
+      image: imageUrl,
+      reportedAt: new Date(),
+    };
+
+    await item.save();
+
+    return res.status(200).json({
+      message: "Lost item marked as found with verification image",
+      item,
+    });
+  } catch (error) {
+    console.error("Error marking lost item as found:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // DELETE /api/lost-items/:id - Delete a lost item (staff/admin only)
 router.delete("/:id", protect, requireRole("admin", "staff"), async (req, res) => {
   try {
