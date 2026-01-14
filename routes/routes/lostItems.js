@@ -181,4 +181,22 @@ router.patch("/:id", protect, async (req, res) => {
   }
 });
 
+// DELETE /api/lost-items/:id - Delete a lost item (staff/admin only)
+router.delete("/:id", protect, requireRole("admin", "staff"), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const deleted = await LostItem.findByIdAndDelete(id);
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Lost item not found" });
+    }
+
+    return res.status(200).json({ message: "Lost item removed successfully" });
+  } catch (error) {
+    console.error("Delete lost item error:", error);
+    return res.status(500).json({ message: "Failed to remove lost item" });
+  }
+});
+
 export default router;

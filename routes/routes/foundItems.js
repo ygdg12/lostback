@@ -155,4 +155,22 @@ router.patch("/:id", protect, async (req, res) => {
   }
 })
 
+// DELETE /api/found-items/:id - Delete a found item (staff/admin only)
+router.delete("/:id", protect, requireRole("admin", "staff"), async (req, res) => {
+  try {
+    const { id } = req.params
+
+    const deleted = await FoundItem.findByIdAndDelete(id)
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Found item not found" })
+    }
+
+    return res.status(200).json({ message: "Found item removed successfully" })
+  } catch (error) {
+    console.error("Delete found item error:", error)
+    return res.status(500).json({ message: "Failed to remove found item" })
+  }
+})
+
 export default router
