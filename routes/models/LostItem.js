@@ -69,6 +69,40 @@ const lostItemSchema = new mongoose.Schema(
         type: Date,
         default: null,
       },
+      approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+    },
+    // Pending staff/admin approval workflow when someone reports they found this lost item
+    foundReport: {
+      status: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: null,
+      },
+      submittedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      submittedAt: { type: Date, default: null },
+      submittedUniqueIdentifier: { type: String, trim: true, default: null },
+      image: { type: String, trim: true, default: null },
+      approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      approvedAt: { type: Date, default: null },
+      rejectedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      rejectedAt: { type: Date, default: null },
+      rejectionReason: { type: String, default: null },
     },
     status: {
       type: String,

@@ -182,24 +182,15 @@ router.patch("/:id", protect, async (req, res) => {
 });
 
 // POST /api/lost-items/:id/mark-found - User reports they found the lost item
-// Verifies by matching uniqueIdentifier and requiring an image
+// Creates a pending report that staff/admin must approve (does NOT mark item as found yet)
 router.post("/:id/mark-found", uploadLost.single("image"), async (req, res) => {
   try {
     const { id } = req.params;
     const providedUniqueId = (req.body.uniqueIdentifier || "").trim();
 
-    if (!providedUniqueId) {
-      return res.status(400).json({ message: "uniqueIdentifier is required" });
-    }
-
     const item = await LostItem.findById(id);
     if (!item) {
       return res.status(404).json({ message: "Lost item not found" });
-    }
-
-    // Check unique identifier match (case-sensitive)
-    if (item.uniqueIdentifier !== providedUniqueId) {
-      return res.status(400).json({ message: "Unique identifier does not match this lost item" });
     }
 
     // Require an image as verification
@@ -217,21 +208,140 @@ router.post("/:id/mark-found", uploadLost.single("image"), async (req, res) => {
       return res.status(400).json({ message: "This lost item has already been marked as found or closed" });
     }
 
-    // Update item as found with verification
-    item.status = "found";
-    item.foundVerification = {
-      image: imageUrl,
-      reportedAt: new Date(),
-    };
+    // Attach submitter if authenticated (optional)
+    let submittedBy = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        submittedBy = decoded?.id || null;
+      } catch (_) {
+        submittedBy = null;
+      }
+    }
+
+    // If there's already a pending report, overwrite it with the latest submission
+    if (item.foundReport?.status === "pending") {
+      item.foundReport.submittedBy = submittedBy || item.foundReport.submittedBy;
+      item.foundReport.submittedAt = new Date();
+      item.foundReport.submittedUniqueIdentifier = providedUniqueId || item.foundReport.submittedUniqueIdentifier;
+      item.foundReport.image = imageUrl;
+      item.foundReport.rejectedBy = null;
+      item.foundReport.rejectedAt = null;
+      item.foundReport.rejectionReason = null;
+    } else {
+      item.foundReport = {
+        status: "pending",
+        submittedBy,
+        submittedAt: new Date(),
+        submittedUniqueIdentifier: providedUniqueId || null,
+        image: imageUrl,
+      };
+    }
 
     await item.save();
 
     return res.status(200).json({
-      message: "Lost item marked as found with verification image",
-      item,
+      message: "Report submitted. Awaiting staff/admin approval.",
+      item: await LostItem.findById(id).populate("reportedBy", "name email studentId phone"),
     });
   } catch (error) {
     console.error("Error marking lost item as found:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// GET /api/lost-items/found-reports - List lost items with pending/approved/rejected found reports (staff/admin only)
+router.get("/found-reports", protect, requireRole("admin", "staff"), async (req, res) => {
+  try {
+    const { status = "pending" } = req.query;
+    if (!["pending", "approved", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const items = await LostItem.find({ "foundReport.status": status })
+      .populate("reportedBy", "name email studentId phone")
+      .populate("foundReport.submittedBy", "name email studentId phone")
+      .populate("foundReport.approvedBy", "name email")
+      .populate("foundReport.rejectedBy", "name email")
+      .sort({ "foundReport.submittedAt": -1 });
+
+    res.json({ items });
+  } catch (error) {
+    console.error("Error fetching found reports:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// PATCH /api/lost-items/:id/found-report/approve - Approve a found report (staff/admin only)
+router.patch("/:id/found-report/approve", protect, requireRole("admin", "staff"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const item = await LostItem.findById(id);
+    if (!item) return res.status(404).json({ message: "Lost item not found" });
+
+    if (!item.foundReport || item.foundReport.status !== "pending") {
+      return res.status(400).json({ message: "No pending found report to approve" });
+    }
+
+    // Mark lost item as found
+    item.status = "found";
+    item.foundVerification = {
+      image: item.foundReport.image,
+      reportedAt: item.foundReport.submittedAt || new Date(),
+      approvedBy: req.user._id,
+    };
+
+    // Update report status
+    item.foundReport.status = "approved";
+    item.foundReport.approvedBy = req.user._id;
+    item.foundReport.approvedAt = new Date();
+    item.foundReport.rejectedBy = null;
+    item.foundReport.rejectedAt = null;
+    item.foundReport.rejectionReason = null;
+
+    await item.save();
+
+    const populated = await LostItem.findById(id)
+      .populate("reportedBy", "name email studentId phone")
+      .populate("foundReport.submittedBy", "name email studentId phone")
+      .populate("foundReport.approvedBy", "name email");
+
+    res.json({ message: "Found report approved. Lost item marked as found.", item: populated });
+  } catch (error) {
+    console.error("Error approving found report:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// PATCH /api/lost-items/:id/found-report/reject - Reject a found report (staff/admin only)
+router.patch("/:id/found-report/reject", protect, requireRole("admin", "staff"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const item = await LostItem.findById(id);
+    if (!item) return res.status(404).json({ message: "Lost item not found" });
+
+    if (!item.foundReport || item.foundReport.status !== "pending") {
+      return res.status(400).json({ message: "No pending found report to reject" });
+    }
+
+    item.foundReport.status = "rejected";
+    item.foundReport.rejectedBy = req.user._id;
+    item.foundReport.rejectedAt = new Date();
+    item.foundReport.rejectionReason = reason || null;
+
+    await item.save();
+
+    const populated = await LostItem.findById(id)
+      .populate("reportedBy", "name email studentId phone")
+      .populate("foundReport.submittedBy", "name email studentId phone")
+      .populate("foundReport.rejectedBy", "name email");
+
+    res.json({ message: "Found report rejected.", item: populated });
+  } catch (error) {
+    console.error("Error rejecting found report:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
